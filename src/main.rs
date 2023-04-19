@@ -63,7 +63,7 @@ fn main() -> ExitCode {
     keid::compiler::llvm::initialize();
 
     let args = Cli::parse();
-    
+
     match args.print {
         Some(PrintOption::TargetList) => {
             todo!();
@@ -76,13 +76,22 @@ fn main() -> ExitCode {
             // }
 
             // return ExitCode::SUCCESS;
-        },
+        }
         None => (),
     }
 
+    let out_dir = args.out_dir.clone().unwrap_or(".".to_owned());
+    let out_dir = match std::fs::canonicalize(&out_dir) {
+        Ok(out_dir) => out_dir,
+        Err(e) => {
+            println!("Failed to resolve path: `{}`, OS error {}", out_dir, e.raw_os_error().unwrap());
+            return ExitCode::FAILURE;
+        }
+    };
+
     if !args.link_only {
         let mut context = Context::new();
-        let mut sigs = SignatureCompiler::new(&mut context);
+        let mut sigs = SignatureCompiler::new();
 
         if args.files.len() == 0 || args.emit.len() == 0 {
             Cli::command().print_help().unwrap();
@@ -111,11 +120,18 @@ fn main() -> ExitCode {
             sigs.add_file(keid_file);
         }
 
-        let resources = sigs.compile();
+        let resources = sigs.compile(&mut context);
 
         let class_info = ClassInfoStorage::new(&mut context);
         let mut compiler = Compiler::new(class_info, context);
         if compiler.compile(resources) {
+            for (path_name, error) in compiler.get_errors() {
+                let pest_error = error
+                    .as_pest_error(&String::from_utf8(std::fs::read(&path_name).expect("file error")).unwrap())
+                    .with_path(&path_name);
+        
+                println!("{}", pest_error);
+            }
             return ExitCode::FAILURE;
         }
 
@@ -134,14 +150,6 @@ fn main() -> ExitCode {
                 }
             };
             let artifacts = compiler.create_artifacts(&target_triple, !args.release); // invert release to debug
-            let out_dir = args.out_dir.clone().unwrap_or(".".to_owned());
-            let out_dir = match std::fs::canonicalize(&out_dir) {
-                Ok(out_dir) => out_dir,
-                Err(e) => {
-                    println!("Failed to resolve path: `{}`, OS error {}", out_dir, e.raw_os_error().unwrap());
-                    return ExitCode::FAILURE;
-                }
-            };
             let artifact_ext = match emit {
                 EmitType::LlvmIr => "ll",
                 EmitType::Object => "o",
@@ -154,7 +162,7 @@ fn main() -> ExitCode {
     }
 
     let linker = Linker::new();
-    linker.link(ObjectFormat::Elf);
+    linker.link(ObjectFormat::Elf, out_dir);
 
     ExitCode::SUCCESS
 }
