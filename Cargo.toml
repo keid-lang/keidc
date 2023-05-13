@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.2.1", features = ["derive"] }
 keid = { path = "../keid" }
+glob = "0.3"
 
 [[bin]]
 name = "keidc"

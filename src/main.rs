@@ -9,8 +9,8 @@ use keid::compiler::{
 #[derive(Parser, Debug)]
 #[command()]
 struct Cli {
-    /// Keid source code files to compile
-    files: Vec<String>,
+    /// Globs for Keid source code files to compile
+    globs: Vec<String>,
 
     /// Skip all compilation, and instead link all binary objects (e.g. ELF, Mach-O, etc) in the target directory to a static library
     #[arg(long)]
@@ -84,7 +84,11 @@ fn main() -> ExitCode {
     let out_dir = match std::fs::canonicalize(&out_dir) {
         Ok(out_dir) => out_dir,
         Err(e) => {
-            println!("Failed to resolve path: `{}`, OS error {}", out_dir, e.raw_os_error().unwrap());
+            println!(
+                "Failed to resolve path: `{}`, OS error {}",
+                out_dir,
+                e.raw_os_error().unwrap()
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -93,31 +97,43 @@ fn main() -> ExitCode {
         let mut context = Context::new();
         let mut sigs = SignatureCompiler::new();
 
-        if args.files.len() == 0 || args.emit.len() == 0 {
+        if args.globs.len() == 0 || args.emit.len() == 0 {
             Cli::command().print_help().unwrap();
             return ExitCode::FAILURE;
         }
 
-        for path in args.files {
-            let contents = match std::fs::read_to_string(&path) {
-                Ok(contents) => contents,
-                Err(e) => {
-                    println!("Failed to read file at `{}`, OS error {}", path, e.raw_os_error().unwrap());
-                    return ExitCode::FAILURE;
-                }
-            };
+        for glob in args.globs {
+            for entry in glob::glob(&glob).unwrap() {
+                match entry {
+                    Ok(path) => {
+                        println!("Including '{}'.", path.to_str().unwrap());
+                        let contents = match std::fs::read_to_string(&path) {
+                            Ok(contents) => contents,
+                            Err(e) => {
+                                println!(
+                                    "Failed to read file at `{}`, OS error {}",
+                                    path.to_str().unwrap(),
+                                    e.raw_os_error().unwrap()
+                                );
+                                return ExitCode::FAILURE;
+                            }
+                        };
 
-            let path = std::fs::canonicalize(&path).unwrap();
-            let path = path.as_os_str().to_str().unwrap();
-            let keid_file = match keid::parser::parse(&path, &contents) {
-                Ok(file) => file,
-                Err(err) => {
-                    eprintln!("Error in {}:\n{}", path, err);
-                    std::process::exit(1);
-                }
-            };
+                        let path = std::fs::canonicalize(&path).unwrap();
+                        let path = path.as_os_str().to_str().unwrap();
+                        let keid_file = match keid::parser::parse(&path, &contents) {
+                            Ok(file) => file,
+                            Err(err) => {
+                                eprintln!("Error in {}:\n{}", path, err);
+                                std::process::exit(1);
+                            }
+                        };
 
-            sigs.add_file(keid_file);
+                        sigs.add_file(keid_file);
+                    }
+                    Err(_) => (),
+                }
+            }
         }
 
         let resources = sigs.compile(&mut context);
@@ -127,9 +143,11 @@ fn main() -> ExitCode {
         if compiler.compile(resources) {
             for (path_name, error) in compiler.get_errors() {
                 let pest_error = error
-                    .as_pest_error(&String::from_utf8(std::fs::read(&path_name).expect("file error")).unwrap())
+                    .as_pest_error(
+                        &String::from_utf8(std::fs::read(&path_name).expect("file error")).unwrap(),
+                    )
                     .with_path(&path_name);
-        
+
                 println!("{}", pest_error);
             }
             return ExitCode::FAILURE;
@@ -139,8 +157,10 @@ fn main() -> ExitCode {
             let target_triple = match emit {
                 EmitType::LlvmIr => "__llvm_ir".to_owned(),
                 EmitType::Object => {
-                    let target_triple =
-                        args.target.clone().unwrap_or_else(|| Target::get_host_target_triple().to_owned());
+                    let target_triple = args
+                        .target
+                        .clone()
+                        .unwrap_or_else(|| Target::get_host_target_triple().to_owned());
                     // todo!()
                     // if Target::get_from_name(&target_triple).is_none() {
                     //     println!("Unknown target triple: `{}`", target_triple);
@@ -156,7 +176,11 @@ fn main() -> ExitCode {
             };
 
             for artifact in artifacts {
-                std::fs::write(out_dir.join(format!("{}.{}", artifact.name, artifact_ext)), artifact.data).unwrap();
+                std::fs::write(
+                    out_dir.join(format!("{}.{}", artifact.name, artifact_ext)),
+                    artifact.data,
+                )
+                .unwrap();
             }
         }
     }
