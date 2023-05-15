@@ -2,7 +2,7 @@ use std::{fmt::Display, process::ExitCode};
 
 use clap::*;
 use keid::compiler::{
-    llvm::{Context, Target},
+    llvm::{Context, LLVMTargetData, Target},
     *,
 };
 
@@ -94,82 +94,82 @@ fn main() -> ExitCode {
     };
 
     if !args.link_only {
-        let mut context = Context::new();
-        let mut sigs = SignatureCompiler::new();
-
-        if args.globs.len() == 0 || args.emit.len() == 0 {
-            Cli::command().print_help().unwrap();
-            return ExitCode::FAILURE;
-        }
-
-        for glob in args.globs {
-            for entry in glob::glob(&glob).unwrap() {
-                match entry {
-                    Ok(path) => {
-                        println!("Including '{}'.", path.to_str().unwrap());
-                        let contents = match std::fs::read_to_string(&path) {
-                            Ok(contents) => contents,
-                            Err(e) => {
-                                println!(
-                                    "Failed to read file at `{}`, OS error {}",
-                                    path.to_str().unwrap(),
-                                    e.raw_os_error().unwrap()
-                                );
-                                return ExitCode::FAILURE;
-                            }
-                        };
-
-                        let path = std::fs::canonicalize(&path).unwrap();
-                        let path = path.as_os_str().to_str().unwrap();
-                        let keid_file = match keid::parser::parse(&path, &contents) {
-                            Ok(file) => file,
-                            Err(err) => {
-                                eprintln!("Error in {}:\n{}", path, err);
-                                std::process::exit(1);
-                            }
-                        };
-
-                        sigs.add_file(keid_file);
-                    }
-                    Err(_) => (),
-                }
-            }
-        }
-
-        let resources = sigs.compile(&mut context);
-
-        let class_info = ClassInfoStorage::new(&mut context);
-        let mut compiler = Compiler::new(class_info, context);
-        if compiler.compile(resources) {
-            for (path_name, error) in compiler.get_errors() {
-                let pest_error = error
-                    .as_pest_error(
-                        &String::from_utf8(std::fs::read(&path_name).expect("file error")).unwrap(),
-                    )
-                    .with_path(&path_name);
-
-                println!("{}", pest_error);
-            }
-            return ExitCode::FAILURE;
-        }
-
-        for emit in args.emit {
+        for emit in &args.emit {
             let target_triple = match emit {
                 EmitType::LlvmIr => "__llvm_ir".to_owned(),
                 EmitType::Object => {
-                    let target_triple = args
-                        .target
-                        .clone()
-                        .unwrap_or_else(|| Target::get_host_target_triple().to_owned());
                     // todo!()
                     // if Target::get_from_name(&target_triple).is_none() {
                     //     println!("Unknown target triple: `{}`", target_triple);
                     //     return ExitCode::FAILURE;
                     // }
-                    target_triple
+                    args.target
+                        .clone()
+                        .unwrap_or_else(|| Target::get_host_target_triple().to_owned())
                 }
             };
-            let artifacts = compiler.create_artifacts(&target_triple, !args.release); // invert release to debug
+
+            let target = LLVMTargetData::new(&target_triple, !args.release).unwrap();
+            let mut context = Context::new(target.clone());
+            let mut sigs = SignatureCompiler::new();
+
+            if args.globs.is_empty() || args.emit.is_empty() {
+                Cli::command().print_help().unwrap();
+                return ExitCode::FAILURE;
+            }
+
+            for glob in &args.globs {
+                for entry in glob::glob(&glob).unwrap() {
+                    match entry {
+                        Ok(path) => {
+                            println!("Including '{}'.", path.to_str().unwrap());
+                            let contents = match std::fs::read_to_string(&path) {
+                                Ok(contents) => contents,
+                                Err(e) => {
+                                    println!(
+                                        "Failed to read file at `{}`, OS error {}",
+                                        path.to_str().unwrap(),
+                                        e.raw_os_error().unwrap()
+                                    );
+                                    return ExitCode::FAILURE;
+                                }
+                            };
+
+                            let path = std::fs::canonicalize(&path).unwrap();
+                            let path = path.as_os_str().to_str().unwrap();
+                            let keid_file = match keid::parser::parse(path, &contents) {
+                                Ok(file) => file,
+                                Err(err) => {
+                                    eprintln!("Error in {}:\n{}", path, err);
+                                    std::process::exit(1);
+                                }
+                            };
+
+                            sigs.add_file(keid_file);
+                        }
+                        Err(_) => (),
+                    }
+                }
+            }
+
+            let resources = sigs.compile(out_dir.to_str().unwrap(), &mut context);
+
+            let class_info = ClassInfoStorage::new(&mut context);
+            let mut compiler = Compiler::new(&target_triple, class_info, context);
+            if compiler.compile(resources) {
+                for (path_name, error) in compiler.get_errors() {
+                    let pest_error = error
+                        .as_pest_error(
+                            &String::from_utf8(std::fs::read(&path_name).expect("file error"))
+                                .unwrap(),
+                        )
+                        .with_path(&path_name);
+
+                    println!("{}", pest_error);
+                }
+                return ExitCode::FAILURE;
+            }
+            let artifacts = compiler.create_artifacts(out_dir.to_str().unwrap(), &target); // invert release to debug
             let artifact_ext = match emit {
                 EmitType::LlvmIr => "ll",
                 EmitType::Object => "o",
