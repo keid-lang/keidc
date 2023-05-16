@@ -9,8 +9,8 @@ use keid::compiler::{
 #[derive(Parser, Debug)]
 #[command()]
 struct Cli {
-    /// Globs for Keid source code files to compile
-    globs: Vec<String>,
+    /// Paths to Keid source code files to compile
+    files: Vec<String>,
 
     /// Skip all compilation, and instead link all binary objects (e.g. ELF, Mach-O, etc) in the target directory to a static library
     #[arg(long)]
@@ -113,43 +113,35 @@ fn main() -> ExitCode {
             let mut context = Context::new(target.clone());
             let mut sigs = SignatureCompiler::new();
 
-            if args.globs.is_empty() || args.emit.is_empty() {
+            if args.files.is_empty() || args.emit.is_empty() {
                 Cli::command().print_help().unwrap();
                 return ExitCode::FAILURE;
             }
 
-            for glob in &args.globs {
-                for entry in glob::glob(&glob).unwrap() {
-                    match entry {
-                        Ok(path) => {
-                            println!("Including '{}'.", path.to_str().unwrap());
-                            let contents = match std::fs::read_to_string(&path) {
-                                Ok(contents) => contents,
-                                Err(e) => {
-                                    println!(
-                                        "Failed to read file at `{}`, OS error {}",
-                                        path.to_str().unwrap(),
-                                        e.raw_os_error().unwrap()
-                                    );
-                                    return ExitCode::FAILURE;
-                                }
-                            };
-
-                            let path = std::fs::canonicalize(&path).unwrap();
-                            let path = path.as_os_str().to_str().unwrap();
-                            let keid_file = match keid::parser::parse(path, &contents) {
-                                Ok(file) => file,
-                                Err(err) => {
-                                    eprintln!("Error in {}:\n{}", path, err);
-                                    std::process::exit(1);
-                                }
-                            };
-
-                            sigs.add_file(keid_file);
-                        }
-                        Err(_) => (),
+            for path in &args.files {
+                let contents = match std::fs::read_to_string(&path) {
+                    Ok(contents) => contents,
+                    Err(e) => {
+                        println!(
+                            "Failed to read file at `{}`, OS error {}",
+                            path,
+                            e.raw_os_error().unwrap()
+                        );
+                        return ExitCode::FAILURE;
                     }
-                }
+                };
+
+                let path = std::fs::canonicalize(&path).unwrap();
+                let path = path.as_os_str().to_str().unwrap();
+                let keid_file = match keid::parser::parse(path, &contents) {
+                    Ok(file) => file,
+                    Err(err) => {
+                        eprintln!("Error in {}:\n{}", path, err);
+                        std::process::exit(1);
+                    }
+                };
+
+                sigs.add_file(keid_file);
             }
 
             let resources = sigs.compile(out_dir.to_str().unwrap(), &mut context);
