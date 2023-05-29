@@ -1,0 +1,61 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'keidc'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=keidc",
+                    "--package=keidc",
+                ],
+                "filter": {
+                    "name": "keidc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--emit",
+                "llvm-ir,object",
+                "../keid/assets/core/array.keid",
+                "../keid/assets/core/collections.keid",
+                "../keid/assets/core/default.keid",
+                "../keid/assets/core/mem.keid",
+                "../keid/assets/core/ops.keid",
+                "../keid/assets/core/string/root.keid",
+                "../keid/assets/core/string/StringBuilder.keid",
+                "../keid/assets/core/string/String.keid",
+                "../keid/assets/std/fs.keid",
+                "../keid/assets/std/io.keid",
+                "../keid/assets/std/os.keid",
+                "../keid/assets/impl/std.linux.keid",
+                "../keid/assets/compiler/main.keid"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'keidc'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=keidc",
+                    "--package=keidc"
+                ],
+                "filter": {
+                    "name": "keidc",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

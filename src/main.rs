@@ -109,7 +109,7 @@ fn main() -> ExitCode {
                 }
             };
 
-            let target = LLVMTargetData::new(&target_triple, !args.release).unwrap();
+            let target = LLVMTargetData::new(&target_triple, !args.release, true).unwrap();
             let mut context = Context::new(target.clone());
             let mut sigs = SignatureCompiler::new();
 
@@ -148,7 +148,7 @@ fn main() -> ExitCode {
 
             let class_info = ClassInfoStorage::new(&mut context);
             let mut compiler = Compiler::new(&target_triple, class_info, context);
-            if compiler.compile(resources) {
+            if compiler.compile(resources, &target) {
                 for (path_name, error) in compiler.get_errors() {
                     let pest_error = error
                         .as_pest_error(
