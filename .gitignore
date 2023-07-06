@@ -1,4 +1,5 @@
 /target
+/*.a
 /*.ll
 /*.o
 /exec
