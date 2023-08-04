@@ -2,4 +2,6 @@
 /*.a
 /*.ll
 /*.o
+/*.kpkg
 /exec
+/.gdbinit
