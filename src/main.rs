@@ -16,6 +16,10 @@ struct Cli {
     #[arg(long)]
     link_only: bool,
 
+    /// Interprets the output LLVM IR within the LLVM JIT execution engine.
+    #[arg(long)]
+    interpret: bool,
+
     /// Comma separated list of the formats that will be emitted by the compiler
     #[arg(long, value_delimiter = ',', default_values_t = vec![EmitType::Object])]
     emit: Vec<EmitType>,
@@ -162,17 +166,23 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
             let artifacts = compiler.create_artifacts(out_dir.to_str().unwrap(), &target); // invert release to debug
-            let artifact_ext = match emit {
-                EmitType::LlvmIr => "ll",
-                EmitType::Object => "o",
-            };
-
             for artifact in artifacts {
+                let artifact_ext = match artifact.kind {
+                    CompilationArtifactType::KeidPackage => "kpkg",
+                    CompilationArtifactType::NativeObject => "o",
+                    CompilationArtifactType::LlvmIr => "ll",
+                };
                 std::fs::write(
                     out_dir.join(format!("{}.{}", artifact.name, artifact_ext)),
                     artifact.data,
                 )
                 .unwrap();
+            }
+
+            if args.interpret {
+                println!("Executing interpreter...");
+                compiler.interpret();
+                println!("Interpreter finished!")
             }
         }
     }
